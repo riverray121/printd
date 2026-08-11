@@ -116,15 +116,14 @@ def main():
     _pipeline = Pipeline(Config.load(args.config))
 
     token = os.environ.get("PRINTD_BEARER_TOKEN")
-    auth = None
     if token:
         try:
             from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
 
-            auth = StaticTokenVerifier(tokens={token: {"client_id": "printd"}})
+            mcp.auth = StaticTokenVerifier(tokens={token: {"client_id": "printd"}})
         except ImportError:
             print("warning: fastmcp auth provider unavailable; serving without bearer auth")
-    mcp.run(transport="http", host=args.host, port=args.port, auth=auth)
+    mcp.run(transport="http", host=args.host, port=args.port)
 
 
 if __name__ == "__main__":
