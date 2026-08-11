@@ -1,0 +1,50 @@
+# printd example config. Every section maps to a seam; swap implementations
+# and values for your printer. ${VARS} interpolate from the environment.
+
+printer:
+  driver: octoprint
+  url: http://octopi.local
+  api_key: ${OCTOPRINT_API_KEY}
+  camera_snapshot_url: http://octopi.local/webcam/?action=snapshot
+  bed_mm: [220, 220]
+  height_mm: 250
+  first_layer_temps: { nozzle: 215, bed: 65 }
+  serial_port: /dev/ttyUSB0
+  serial_baud: 115200
+
+slicer:
+  adapter: orca
+  binary: /opt/orcaslicer/AppRun
+  machine_profile: "bundled:Creality/machine/Creality Ender-3 V3 SE 0.4 nozzle.json"
+  process_profiles:
+    plain: /path/to/process.json
+  filament_profiles:
+    default: /path/to/filament.json
+
+gates:
+  brim_skirt: { mode: warn }          # allow | warn | forbid
+  placement_zone:
+    preferred: [55, 55, 165, 165]     # omit to center on the full bed
+  bounds: { enabled: true }
+  approval: { required: true, per_job_override: true }
+
+transforms:
+  - name: fresh_mesh_preamble
+    default: off                       # opt in per printer
+    bed_temp: 65
+    probe_nozzle_temp: 160
+  - name: marlin_start_patches
+    saved_mesh_cmd: "M420 S1"
+
+watcher:
+  poll_seconds: 30
+  heartbeat_every_polls: 10
+  stall_minutes: 10
+  first_layer_check_minutes: 10
+  milestones: [25, 50, 75]
+
+notifier:
+  backend: log                         # log | ha
+
+storage:
+  root: ~/print
