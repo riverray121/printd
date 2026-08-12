@@ -2,46 +2,53 @@
 
 # printd
 
-A self-hosted print daemon. Send it a model, it slices with your profiles, enforces your rules, shows you a preview, prints on your go, and watches the print with snapshot notifications. Drive it from any MCP client (Claude, agents, your own tools) or the bundled CLI.
-
-## Why
-
-Printing through a chat agent usually means a long chain of manual steps executed differently every time. printd makes the pipeline deterministic: the agent makes decisions, the daemon does the work, and a print is three calls: `submit`, `slice`, `start`.
+A self-hosted print daemon. Send it a model file or URL, and it slices with your profiles, enforces your rules, renders a preview for approval, starts the print, and watches it, sending phone notifications with live camera photos at every stage. Drive it from any MCP client (Claude, other agents, your own tools) or the bundled CLI.
 
 ## How it works
 
 ```
 submit (file or model URL)
   -> slice (your slicer, your profiles)
-  -> gates (your rules: no brim, placement, bounds, ...)
-  -> preview image -> human approval (overridable)
-  -> start (preheat, print)
-  -> watcher (snapshots, milestones, stall detection, notifications)
+  -> checks (brim policy, bed placement, motion bounds)
+  -> preview image -> approval (overridable per job)
+  -> start (preheat, then print)
+  -> watch (camera-photo notifications: first layer, milestones, stalls, done/failed)
 ```
 
-## The engine ships empty
+The watcher never acts on its own: it photographs the print bed with your printer's camera and notifies you; pausing or cancelling stays a human decision.
 
-Everything opinionated is a swappable part configured in one YAML file:
+## Suggested hardware setup
 
-| Seam | Ships with |
-|---|---|
-| Printer drivers | OctoPrint |
-| Slicer adapters | OrcaSlicer CLI |
-| Gates | brim/skirt policy, placement zone, bounds check, preview approval |
-| G-code transforms | fresh-mesh probe preamble, Marlin start-gcode patches |
-| Notifiers | Home Assistant |
+| Piece | Example | Role |
+|---|---|---|
+| Printer | Any Marlin printer with OctoPrint support (tested: Creality Ender-3 V3 SE) | Prints |
+| Print server | Raspberry Pi 3B+/Zero 2 running OctoPrint, USB to the printer, camera attached | Feeds G-code to the printer, serves camera snapshots |
+| printd host | Raspberry Pi 5 (2 GB+ RAM for slicing) or any Linux box | Runs printd: slicing, checks, previews, watcher, MCP server |
 
-If a behavior can't be expressed as config on one of these seams, it doesn't belong in core.
+A single machine can play both server roles if it has the RAM to slice. Keeping them separate means nothing you add to the printd host can disturb a running print.
 
 ## Quickstart
 
 ```sh
 pip install printd
-printd-server --config config.yaml   # MCP server (HTTP) + watcher
+printd-server --config config.yaml   # MCP server (HTTP)
+printd-watch --config config.yaml    # watcher daemon
 printctl status                      # same operations from the shell
 ```
 
-See `example-config.yaml` for a full config.
+Copy `example-config.yaml` and fill in your printer. printd authenticates to OctoPrint with an API key because OctoPrint requires one for all REST calls; copy it from OctoPrint under Settings → API.
+
+## Swappable parts
+
+Everything opinionated is configured, not hardcoded, in one YAML file:
+
+| Seam | Ships with |
+|---|---|
+| Printer drivers | OctoPrint |
+| Slicer adapters | OrcaSlicer CLI |
+| Checks | brim/skirt policy, bed placement zone, motion bounds, preview approval |
+| G-code transforms | fresh-bed-probe preamble, Marlin start-gcode patches |
+| Notifiers | Home Assistant companion app |
 
 ## License
 
