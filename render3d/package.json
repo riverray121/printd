@@ -1,0 +1,16 @@
+{
+  "name": "printd-render3d",
+  "private": true,
+  "description": "Headless three-angle G-code preview renderer (three.js tubes via @polar3d/gcode-viewer, screenshot by Playwright Chromium)",
+  "scripts": {
+    "build": "esbuild page.js --bundle --format=iife --global-name=PrintdRender --outfile=dist/bundle.js"
+  },
+  "dependencies": {
+    "@polar3d/gcode-viewer": "^2.2.0",
+    "playwright-core": "^1.49.0",
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}

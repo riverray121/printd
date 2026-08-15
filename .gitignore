@@ -4,3 +4,5 @@ __pycache__/
 dist/
 build/
 .pytest_cache/
+render3d/node_modules/
+render3d/dist/

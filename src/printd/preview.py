@@ -1,14 +1,15 @@
 """Render sliced G-code to a PNG preview a human can judge.
 
-Three angles in one image (two isometric views 90 degrees apart and a front
-elevation), line-based with per-feature colors and transparency: walls read as
-translucent so supports, bridges, and overhangs behind them stay visible.
-Infill is deliberately not drawn; it would fill the silhouette and hide
-everything that matters for approval.
+Primary renderer: three-angle 3D tube rendering with per-feature colors via
+render3d/ (three.js + @polar3d/gcode-viewer in headless Chromium). Fallback
+when node/Chromium are unavailable: a line projection with per-feature colors
+and transparency.
 """
 
 import math
+import os
 import re
+import subprocess
 from pathlib import Path
 
 import matplotlib
@@ -97,7 +98,27 @@ def _proj_front(px, py, pz):
     return px, pz
 
 
+_RENDER3D = Path(__file__).resolve().parent.parent.parent / "render3d" / "render.js"
+
+
 def render(gcode_path: Path, out_png: Path, bed_mm: tuple[float, float]) -> Path:
+    """Prefer the 3D tube renderer; fall back to the line projection."""
+    node = os.environ.get("PRINTD_NODE", "node")
+    if _RENDER3D.exists():
+        try:
+            subprocess.run(
+                [node, str(_RENDER3D), str(gcode_path), str(out_png),
+                 "--bed", f"{bed_mm[0]}x{bed_mm[1]}", "--title", gcode_path.stem],
+                check=True, capture_output=True, text=True, timeout=300,
+            )
+            return out_png
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as e:
+            detail = getattr(e, "stderr", "") or str(e)
+            print(f"render3d unavailable ({detail.strip()[:200]}); using fallback renderer")
+    return render_fallback(gcode_path, out_png, bed_mm)
+
+
+def render_fallback(gcode_path: Path, out_png: Path, bed_mm: tuple[float, float]) -> Path:
     segs = _parse(gcode_path)
     max_z = max((s[4] for s in segs), default=0.0)
     bx, by = bed_mm
