@@ -1,7 +1,7 @@
 // Bundled into dist/bundle.js and injected into a blank page by render.js.
 // Exposes PrintdRender.renderComposite(gcodeText, opts) -> dataURL of a
-// twelve-panel composite PNG: six shaded tube views plus six transparent
-// line-projection views, in rows of three.
+// composite PNG: six shaded tube views and six transparent line-projection
+// views in rows of three, then a whole-bed placement map and a legend.
 
 import * as THREE from "three";
 import { GCodeParser, GCodeRenderer } from "@polar3d/gcode-viewer";
@@ -109,6 +109,10 @@ export async function renderComposite(gcodeText, opts) {
       }
     }
   }
+  if (!layers.length || !Number.isFinite(bbox.min.x)) {
+    throw new Error("no typed extrusion paths found in G-code; nothing to render");
+  }
+
   const center = new THREE.Vector3()
     .addVectors(bbox.min, bbox.max)
     .multiplyScalar(0.5);
@@ -116,17 +120,26 @@ export async function renderComposite(gcodeText, opts) {
 
   const tubeShots = renderTubeViews(layers, bbox, center, { bedX, bedY, panel });
 
+  const lineViews = [
+    ["isometric — lines", (x, y, z) => [(x - y) * C30, (x + y) * S30 - z], false],
+    ["isometric, rotated 90° — lines", (x, y, z) => [(y - (bedX - x)) * C30, (y + (bedX - x)) * S30 - z], false],
+    ["isometric back-right — lines", (x, y, z) => [((bedX - x) - (bedY - y)) * C30, ((bedX - x) + (bedY - y)) * S30 - z], false],
+    ["front elevation — lines", (x, y, z) => [x, -z], false],
+    ["side elevation — lines", (x, y, z) => [y, -z], false],
+    ["top-down, bed dashed — lines", (x, y, z) => [x, -y], true],
+  ];
+
   // ---- composite ----
   const cols = 3;
-  const panels = 12;
-  const rows = panels / cols;
+  const rows = Math.ceil((tubeShots.length + lineViews.length) / cols);
   const pad = 10;
   const labelH = 26;
   const headerH = 44;
   const legendH = 46;
+  const mapH = 340;
   const out = document.createElement("canvas");
   out.width = panel * cols + pad * (cols + 1);
-  out.height = headerH + rows * (panel + labelH + pad) + legendH;
+  out.height = headerH + rows * (panel + labelH + pad) + mapH + legendH;
   const ctx = out.getContext("2d");
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, out.width, out.height);
@@ -158,20 +171,14 @@ export async function renderComposite(gcodeText, opts) {
     label(i, name);
   }
 
-  const lineViews = [
-    ["isometric — lines", (x, y, z) => [(x - y) * C30, (x + y) * S30 - z], false],
-    ["isometric, rotated 90° — lines", (x, y, z) => [(y - (bedX - x)) * C30, (y + (bedX - x)) * S30 - z], false],
-    ["isometric back-right — lines", (x, y, z) => [((bedX - x) - (bedY - y)) * C30, ((bedX - x) + (bedY - y)) * S30 - z], false],
-    ["front elevation — lines", (x, y, z) => [x, -z], false],
-    ["side elevation — lines", (x, y, z) => [y, -z], false],
-    ["top-down, bed dashed — lines", (x, y, z) => [x, -y], true],
-  ];
   for (let i = 0; i < lineViews.length; i++) {
     const [name, proj, withBed] = lineViews[i];
     const [x, y] = cell(tubeShots.length + i);
     drawLineView(ctx, layers, proj, withBed, { bedX, bedY }, x, y, panel);
     label(tubeShots.length + i, name);
   }
+
+  drawBedMap(ctx, bbox, { bedX, bedY }, pad, headerH + rows * (panel + labelH + pad), mapH);
 
   let lx = pad;
   const ly = out.height - 14;
@@ -261,6 +268,51 @@ function renderTubeViews(layers, bbox, center, { bedX, bedY, panel }) {
   return shots;
 }
 
+// Whole-bed placement map: the bed to scale with the part's footprint on
+// it, plus the footprint coordinates spelled out. This panel is the one
+// place that always shows where the print sits on the plate, regardless
+// of how tightly the other views zoom.
+function drawBedMap(ctx, bbox, { bedX, bedY }, ox, oy, mapH) {
+  const side = mapH - 60;
+  const scale = side / Math.max(bedX, bedY);
+  const bx = ox + 10;
+  const by = oy + 30;
+
+  ctx.save();
+  ctx.font = "17px sans-serif";
+  ctx.fillStyle = "#555555";
+  ctx.fillText("placement on bed", bx, oy + 18);
+
+  ctx.strokeStyle = "#999999";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(bx, by, bedX * scale, bedY * scale);
+
+  // Y is flipped so the map reads like the top-down view (origin front-left).
+  const fx = bx + bbox.min.x * scale;
+  const fy = by + (bedY - bbox.max.y) * scale;
+  const fw = (bbox.max.x - bbox.min.x) * scale;
+  const fh = (bbox.max.y - bbox.min.y) * scale;
+  ctx.fillStyle = "rgba(240, 138, 36, 0.35)";
+  ctx.fillRect(fx, fy, fw, fh);
+  ctx.strokeStyle = "#c34a00";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(fx, fy, fw, fh);
+
+  ctx.fillStyle = "#333333";
+  ctx.font = "16px sans-serif";
+  const tx = bx + bedX * scale + 24;
+  ctx.fillText(`bed ${bedX} x ${bedY} mm`, tx, by + 20);
+  ctx.fillText(
+    `footprint ${(bbox.max.x - bbox.min.x).toFixed(0)} x ${(bbox.max.y - bbox.min.y).toFixed(0)} mm`,
+    tx, by + 46,
+  );
+  ctx.fillText(
+    `x ${bbox.min.x.toFixed(0)}-${bbox.max.x.toFixed(0)}, y ${bbox.min.y.toFixed(0)}-${bbox.max.y.toFixed(0)}`,
+    tx, by + 72,
+  );
+  ctx.restore();
+}
+
 function drawLineView(ctx, layers, proj, withBed, { bedX, bedY }, ox, oy, panel) {
   // Project every drawable path, find extents, then scale-to-fit the cell.
   const margin = 30;
@@ -281,13 +333,13 @@ function drawLineView(ctx, layers, proj, withBed, { bedX, bedY }, ox, oy, panel)
       if (pts.length >= 4) paths.push([p.pathType, pts]);
     }
   }
+  if (!paths.length) return;
   // The bed rect is drawn (clipped to the cell) but deliberately excluded
   // from the extents: framing follows the part, and whichever bed edges
   // fall inside the frame still convey placement.
   const bedPts = withBed
     ? [[0, 0], [bedX, 0], [bedX, bedY], [0, bedY], [0, 0]].map(([cx, cy]) => proj(cx, cy, 0))
     : null;
-  if (!paths.length) return;
 
   const scale = Math.min(
     (panel - 2 * margin) / Math.max(maxU - minU, 1e-6),

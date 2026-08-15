@@ -38,6 +38,8 @@ printctl status                      # same operations from the shell
 
 Copy `example-config.yaml` and fill in your printer. printd authenticates to OctoPrint with an API key because OctoPrint requires one for all REST calls; copy it from OctoPrint under Settings → API.
 
+Previews render as a single composite PNG: six shaded 3D views (extrusion tubes, per-feature colors), six transparent line projections, and a bed placement map. This needs Node plus a headless Chromium (`cd render3d && npm install && npm run build`, then `npx playwright install chromium` or point `PRINTD_CHROMIUM` at any Chromium binary). Without Node, printd falls back to a five-view SVG line render that only needs Chromium; the pipeline works either way.
+
 ## Swappable parts
 
 Everything opinionated is configured, not hardcoded, in one YAML file:

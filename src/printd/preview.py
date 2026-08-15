@@ -2,12 +2,14 @@
 
 Two engines:
 
-- render_tubes: three.js tube rendering with per-feature colors via
-  render3d/ (headless Chromium). Shaded 3D geometry, six views.
-- render_lines: per-feature colored vector line projections built as an
-  SVG (five stacked full-width views), rasterized with headless Chromium.
+- render_composite: the full preview via render3d/ (three.js in headless
+  Chromium): six shaded tube views, six transparent line-projection
+  views, a whole-bed placement map, and a legend in one PNG. Needs Node.
+- render_lines: dependency-light fallback with the same feature palette:
+  per-feature colored line projections built as an SVG (five stacked
+  full-width views), rasterized with headless Chromium alone.
 
-render() prefers tubes and falls back to lines.
+render() prefers the composite and falls back to lines.
 """
 
 import glob
@@ -130,17 +132,17 @@ _RENDER3D = Path(__file__).resolve().parent.parent.parent / "render3d" / "render
 
 
 def render(gcode_path: Path, out_png: Path, bed_mm: tuple[float, float]) -> Path:
-    """Prefer the tube renderer; fall back to the line projection."""
+    """Prefer the composite renderer; fall back to the line projection."""
     if _RENDER3D.exists():
         try:
-            return render_tubes(gcode_path, out_png, bed_mm)
+            return render_composite(gcode_path, out_png, bed_mm)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as e:
             detail = getattr(e, "stderr", "") or str(e)
-            print(f"tube renderer unavailable ({detail.strip()[:200]}); using line renderer")
+            print(f"composite renderer unavailable ({detail.strip()[:200]}); using line renderer")
     return render_lines(gcode_path, out_png, bed_mm)
 
 
-def render_tubes(gcode_path: Path, out_png: Path, bed_mm: tuple[float, float]) -> Path:
+def render_composite(gcode_path: Path, out_png: Path, bed_mm: tuple[float, float]) -> Path:
     node = os.environ.get("PRINTD_NODE", "node")
     subprocess.run(
         [node, str(_RENDER3D), str(gcode_path), str(out_png),

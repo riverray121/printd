@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Usage: node render.js <gcode-path> <out-png> [--bed 220x220] [--title name]
-// Renders a three-angle tube preview by driving headless Chromium.
+// Renders the composite preview (tube views, line views, bed placement map)
+// by driving headless Chromium.
 
 const fs = require("fs");
 const path = require("path");
