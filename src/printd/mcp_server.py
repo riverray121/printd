@@ -29,9 +29,10 @@ def submit(source: str) -> str:
 @mcp.tool
 def slice_model(model: str, process: str = "plain", filament: str = "default",
                 fresh_mesh: bool | None = None) -> dict:
-    """Slice a submitted model. process: plain | supports | max_adhesion |
-    supports_max_adhesion. Returns gcode path, preview image path, the approval
-    token required by start, gate notes, and placement notes."""
+    """Slice a submitted model. process and filament name entries from the
+    config's process_profiles / filament_profiles maps (e.g. plain, supports,
+    strong; default, hotbond). Returns gcode path, preview image path, the
+    approval token required by start, gate notes, and placement notes."""
     opts = {}
     if fresh_mesh is not None:
         opts["fresh_mesh"] = fresh_mesh
