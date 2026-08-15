@@ -27,6 +27,10 @@ class Watcher:
         self.first_layer_polls = max(1, int(cfg.get("first_layer_check_minutes", 10)) * 60 // self.poll_s)
         self.milestones = list(cfg.get("milestones", [25, 50, 75]))
         self._reset()
+        # True until the first successful poll: a print already running then
+        # is adopted, not treated as newly started (no gallery reset, no
+        # duplicate "Print started" notification after a watcher restart).
+        self.first_poll = True
 
     def _reset(self):
         self.active_file = None
@@ -52,13 +56,21 @@ class Watcher:
                 self._notify("Printer unreachable", f"status poll failed: {e}", with_snapshot=False)
                 self.stall_notified = True
             return
+        first_poll, self.first_poll = self.first_poll, False
 
         state = st.state
         if state in ACTIVE_STATES:
             if st.file != self.active_file:
                 self._reset()
                 self.active_file = st.file
-                self._notify("Print started", f"{st.file}")
+                if first_poll:
+                    print(f"adopted running print: {st.file}", flush=True)
+                else:
+                    try:
+                        self.notifier.new_session()
+                    except Exception as e:
+                        print(f"gallery reset failed: {e}", file=sys.stderr, flush=True)
+                    self._notify("Print started", f"{st.file}")
             self.polls_in_print += 1
             completion = st.completion or 0.0
 
