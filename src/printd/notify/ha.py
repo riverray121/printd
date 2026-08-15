@@ -30,9 +30,16 @@ class HomeAssistantNotifier(Notifier):
                 name = f"snap_{int(time.time())}.jpg"
                 (self.www_dir / name).write_bytes(image)
                 data["image"] = f"/local/printd/{name}"
+                # Tap opens the snapshot full-size; the printer UI stays one
+                # press away as an action in the expanded notification.
+                data["url"] = data["image"]
+                if self.click_url:
+                    data["actions"] = [
+                        {"action": "URI", "title": "Open printer hub", "uri": self.click_url}
+                    ]
             except OSError:
                 pass  # HA www volume not mounted; send text-only
-        if self.click_url:
+        if "url" not in data and self.click_url:
             data["url"] = self.click_url
         payload = {"title": title, "message": message}
         if data:
