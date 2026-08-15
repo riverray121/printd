@@ -99,6 +99,16 @@ class Pipeline:
         bed = first_layer.get("bed", 65)
         self.driver.preheat_and_wait(nozzle, bed)
 
+        # The camera view is clear right now; once the print starts, probing
+        # and leveling park the head in front of the lens. The watcher uses
+        # this shot for its "Print started" notification.
+        try:
+            snap = self.driver.snapshot()
+            if snap:
+                (self.storage.root / "prestart.jpg").write_bytes(snap)
+        except Exception:
+            pass
+
         self.driver.start(remote)
         self.storage.log_job(event="start", file=remote, source=str(path))
         return remote

@@ -41,12 +41,29 @@ class Watcher:
         self.sent_first_layer = False
         self.stall_notified = False
 
-    def _notify(self, title: str, message: str, with_snapshot: bool = True):
-        image = self.p.snapshot() if with_snapshot else None
+    def _notify(self, title: str, message: str, with_snapshot: bool = True,
+                image: bytes | None = None):
+        if image is None and with_snapshot:
+            image = self.p.snapshot()
         try:
             self.notifier.send(title, message, image)
         except Exception as e:  # notification failure must never kill the watcher
             print(f"notify failed: {e}", file=sys.stderr, flush=True)
+
+    def _prestart_image(self) -> bytes | None:
+        """The snapshot pipeline.start takes before the print begins.
+
+        A live snapshot at start-detection time shows the head parked in
+        front of the camera (probing/leveling), so prefer the pre-start
+        shot when it's recent enough to belong to this print.
+        """
+        p = self.p.storage.root / "prestart.jpg"
+        try:
+            if p.exists() and time.time() - p.stat().st_mtime < 15 * 60:
+                return p.read_bytes()
+        except OSError:
+            pass
+        return None
 
     def tick(self):
         try:
@@ -70,7 +87,7 @@ class Watcher:
                         self.notifier.new_session()
                     except Exception as e:
                         print(f"gallery reset failed: {e}", file=sys.stderr, flush=True)
-                    self._notify("Print started", f"{st.file}")
+                    self._notify("Print started", f"{st.file}", image=self._prestart_image())
             self.polls_in_print += 1
             completion = st.completion or 0.0
 

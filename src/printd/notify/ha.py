@@ -21,11 +21,13 @@ import requests
 from .base import Notifier
 
 _GALLERY_STYLE = """
-body { font-family: sans-serif; background: #111; color: #ddd; margin: 0; padding: 12px; }
-h1 { font-size: 1.1em; font-weight: 600; }
+body { font-family: sans-serif; background: #111; color: #ddd; margin: 0 auto;
+       padding: 12px; max-width: 680px; }
+h1 { font-size: 16px; font-weight: 600; }
 figure { margin: 0 0 18px 0; }
-img { width: 100%; border-radius: 6px; }
-figcaption { font-size: 0.9em; color: #aaa; padding: 4px 2px; }
+img { width: 100%; border-radius: 6px; display: block; }
+figcaption { font-size: 13px; color: #aaa; padding: 4px 2px; }
+p { font-size: 14px; }
 """
 
 
