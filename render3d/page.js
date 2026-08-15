@@ -5,36 +5,59 @@
 import * as THREE from "three";
 import { GCodeParser, GCodeRenderer } from "@polar3d/gcode-viewer";
 
+// Keys are the parser's pathType names (see mapPathType in @polar3d/gcode-viewer).
 const PATH_COLORS = {
   outer_perimeter: "#3a7ca5",
   inner_perimeter: "#8fb8d8",
-  skin: "#5a8db0",
-  infill: "#d9d9d9",
+  top_solid_infill: "#5a8db0",
+  bottom_solid_infill: "#5a8db0",
   solid_infill: "#c0c0c0",
+  infill: "#d9d9d9",
   support: "#f08a24",
   support_interface: "#c34a00",
-  bridge: "#3366cc",
-  overhang: "#cc2288",
+  bridge: "#3366cc", // overhang perimeters also map here
   skirt: "#88bb88",
   brim: "#88bb88",
-  travel: "#000000",
 };
 
 const LEGEND = [
   ["walls", "#3a7ca5"],
+  ["surfaces", "#5a8db0"],
   ["infill", "#d9d9d9"],
   ["supports", "#f08a24"],
   ["support interface", "#c34a00"],
-  ["bridges", "#3366cc"],
-  ["overhangs", "#cc2288"],
+  ["bridges/overhangs", "#3366cc"],
   ["skirt/brim", "#88bb88"],
 ];
 
 export async function renderComposite(gcodeText, opts) {
   const { bedX = 220, bedY = 220, panel = 720 } = opts || {};
 
-  const parser = new GCodeParser();
-  const parsed = parser.parse(gcodeText);
+  const parsed = new GCodeParser().parse(gcodeText);
+
+  // Untagged extrusion (purge line, priming) has pathType "unknown"; keep it
+  // out of both the render and the bounding box so it can't skew the framing.
+  const layers = parsed.layers
+    .map((l) => ({ ...l, paths: l.paths.filter((p) => p.pathType !== "unknown") }))
+    .filter((l) => l.paths.length > 0);
+
+  const bbox = {
+    min: new THREE.Vector3(Infinity, Infinity, Infinity),
+    max: new THREE.Vector3(-Infinity, -Infinity, -Infinity),
+  };
+  for (const l of layers) {
+    for (const p of l.paths) {
+      if (!p.isExtrusion) continue;
+      for (let i = 0; i < p.vertices.length; i += 3) {
+        bbox.min.x = Math.min(bbox.min.x, p.vertices[i]);
+        bbox.min.y = Math.min(bbox.min.y, p.vertices[i + 1]);
+        bbox.min.z = Math.min(bbox.min.z, p.vertices[i + 2]);
+        bbox.max.x = Math.max(bbox.max.x, p.vertices[i]);
+        bbox.max.y = Math.max(bbox.max.y, p.vertices[i + 1]);
+        bbox.max.z = Math.max(bbox.max.z, p.vertices[i + 2]);
+      }
+    }
+  }
 
   const renderer3d = new GCodeRenderer({
     renderTubes: true,
@@ -42,7 +65,16 @@ export async function renderComposite(gcodeText, opts) {
     lineHeight: 0.2,
     customColors: PATH_COLORS,
   });
-  const model = renderer3d.render(parsed.layers);
+  // render() centers all geometry on the bbox midpoint and returns one group
+  // per layer.
+  const renderedLayers = renderer3d.render(layers, bbox);
+  const model = new THREE.Group();
+  for (const rl of renderedLayers) model.add(rl.object);
+
+  const center = new THREE.Vector3()
+    .addVectors(bbox.min, bbox.max)
+    .multiplyScalar(0.5);
+  const size = new THREE.Vector3().subVectors(bbox.max, bbox.min);
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color("#ffffff");
@@ -56,14 +88,13 @@ export async function renderComposite(gcodeText, opts) {
   fill.position.set(-1, 1, 1);
   scene.add(fill);
 
+  // Scene space = G-code space minus `center` (Z-up). Draw the bed where it
+  // really is so placement on the plate stays visible.
   const grid = new THREE.GridHelper(Math.max(bedX, bedY), 22, 0xcccccc, 0xe6e6e6);
-  grid.rotation.x = Math.PI / 2; // model space is Z-up
-  grid.position.set(bedX / 2, bedY / 2, 0);
+  grid.rotation.x = Math.PI / 2;
+  grid.position.set(bedX / 2 - center.x, bedY / 2 - center.y, -center.z);
   scene.add(grid);
 
-  const bbox = new THREE.Box3().setFromObject(model);
-  const center = bbox.getCenter(new THREE.Vector3());
-  const size = bbox.getSize(new THREE.Vector3());
   const radius = Math.max(size.x, size.y, size.z) * 0.9 + 8;
 
   const canvas = document.createElement("canvas");
@@ -76,15 +107,15 @@ export async function renderComposite(gcodeText, opts) {
   camera.up.set(0, 0, 1);
 
   const angles = [
-    ["isometric", [center.x + radius, center.y - radius, center.z + radius * 0.85]],
-    ["isometric, rotated", [center.x - radius, center.y - radius, center.z + radius * 0.85]],
-    ["front", [center.x, center.y - radius * 1.5, center.z + size.z * 0.25]],
+    ["isometric", [radius, -radius, radius * 0.85]],
+    ["isometric, rotated", [-radius, -radius, radius * 0.85]],
+    ["front", [0, -radius * 1.5, size.z * 0.25]],
   ];
 
   const shots = [];
   for (const [label, pos] of angles) {
     camera.position.set(pos[0], pos[1], pos[2]);
-    camera.lookAt(center);
+    camera.lookAt(0, 0, 0);
     camera.updateProjectionMatrix();
     gl.render(scene, camera);
     shots.push([label, canvas.toDataURL("image/png")]);
@@ -102,8 +133,7 @@ export async function renderComposite(gcodeText, opts) {
 
   ctx.fillStyle = "#222222";
   ctx.font = "bold 22px sans-serif";
-  const h = (parsed.boundingBox && (parsed.boundingBox.max.z - parsed.boundingBox.min.z)) || size.z;
-  ctx.fillText(`${opts.title || "sliced G-code"}   |   height ${h.toFixed(1)} mm`, pad, 30);
+  ctx.fillText(`${opts.title || "sliced G-code"}   |   height ${size.z.toFixed(1)} mm`, pad, 30);
 
   for (let i = 0; i < shots.length; i++) {
     const [label, url] = shots[i];
