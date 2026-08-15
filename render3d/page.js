@@ -281,16 +281,12 @@ function drawLineView(ctx, layers, proj, withBed, { bedX, bedY }, ox, oy, panel)
       if (pts.length >= 4) paths.push([p.pathType, pts]);
     }
   }
-  let bedPts = null;
-  if (withBed) {
-    bedPts = [[0, 0], [bedX, 0], [bedX, bedY], [0, bedY], [0, 0]].map(([cx, cy]) => proj(cx, cy, 0));
-    for (const [u, v] of bedPts) {
-      if (u < minU) minU = u;
-      if (u > maxU) maxU = u;
-      if (v < minV) minV = v;
-      if (v > maxV) maxV = v;
-    }
-  }
+  // The bed rect is drawn (clipped to the cell) but deliberately excluded
+  // from the extents: framing follows the part, and whichever bed edges
+  // fall inside the frame still convey placement.
+  const bedPts = withBed
+    ? [[0, 0], [bedX, 0], [bedX, bedY], [0, bedY], [0, 0]].map(([cx, cy]) => proj(cx, cy, 0))
+    : null;
   if (!paths.length) return;
 
   const scale = Math.min(
