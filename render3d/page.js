@@ -1,42 +1,69 @@
 // Bundled into dist/bundle.js and injected into a blank page by render.js.
 // Exposes PrintdRender.renderComposite(gcodeText, opts) -> dataURL of a
-// three-angle composite PNG.
+// six-view composite PNG.
 
 import * as THREE from "three";
 import { GCodeParser, GCodeRenderer } from "@polar3d/gcode-viewer";
 
-// Keys are the parser's pathType names (see mapPathType in @polar3d/gcode-viewer).
+// The parser only understands a fixed set of ;TYPE: names. Orca emits some
+// it doesn't know (they'd land in "unknown" and be dropped), so normalize
+// before parsing. Overhang walls are routed to the otherwise-unused
+// "Prime tower" bucket to give them their own color — the parser's own
+// table would fold them into "bridge".
+const TYPE_ALIASES = [
+  [/^;TYPE:Overhang wall\s*$/, ";TYPE:Prime tower"],
+  [/^;TYPE:Internal solid infill\s*$/, ";TYPE:Solid infill"],
+  [/^;TYPE:Internal Bridge\s*$/, ";TYPE:Bridge"],
+];
+
+function normalizeTypes(gcodeText) {
+  return gcodeText
+    .split("\n")
+    .map((ln) => {
+      if (!ln.startsWith(";TYPE:")) return ln;
+      for (const [re, sub] of TYPE_ALIASES) {
+        if (re.test(ln)) return sub;
+      }
+      return ln;
+    })
+    .join("\n");
+}
+
+// Keys are the parser's pathType names. prime_tower carries overhang walls
+// (see TYPE_ALIASES).
 const PATH_COLORS = {
-  outer_perimeter: "#3a7ca5",
-  inner_perimeter: "#8fb8d8",
-  top_solid_infill: "#5a8db0",
-  bottom_solid_infill: "#5a8db0",
-  solid_infill: "#c0c0c0",
-  infill: "#d9d9d9",
+  outer_perimeter: "#555555",
+  inner_perimeter: "#aaaaaa",
+  top_solid_infill: "#777777",
+  bottom_solid_infill: "#777777",
+  solid_infill: "#c9c9c9",
+  infill: "#e3e3e3",
   support: "#f08a24",
   support_interface: "#c34a00",
-  bridge: "#3366cc", // overhang perimeters also map here
+  bridge: "#3366cc",
+  prime_tower: "#cc2288",
   skirt: "#88bb88",
   brim: "#88bb88",
 };
 
 const LEGEND = [
-  ["walls", "#3a7ca5"],
-  ["surfaces", "#5a8db0"],
-  ["infill", "#d9d9d9"],
+  ["part walls", "#555555"],
+  ["surfaces", "#777777"],
+  ["infill", "#e3e3e3"],
   ["supports", "#f08a24"],
   ["support interface", "#c34a00"],
-  ["bridges/overhangs", "#3366cc"],
+  ["bridges", "#3366cc"],
+  ["overhangs", "#cc2288"],
   ["skirt/brim", "#88bb88"],
 ];
 
 export async function renderComposite(gcodeText, opts) {
-  const { bedX = 220, bedY = 220, panel = 720 } = opts || {};
+  const { bedX = 220, bedY = 220, panel = 900 } = opts || {};
 
-  const parsed = new GCodeParser().parse(gcodeText);
+  const parsed = new GCodeParser().parse(normalizeTypes(gcodeText));
 
-  // Untagged extrusion (purge line, priming) has pathType "unknown"; keep it
-  // out of both the render and the bounding box so it can't skew the framing.
+  // Untagged extrusion (purge line, start gcode) has pathType "unknown";
+  // keep it out of the render and the bounding box.
   const layers = parsed.layers
     .map((l) => ({ ...l, paths: l.paths.filter((p) => p.pathType !== "unknown") }))
     .filter((l) => l.paths.length > 0);
@@ -65,8 +92,8 @@ export async function renderComposite(gcodeText, opts) {
     lineHeight: 0.2,
     customColors: PATH_COLORS,
   });
-  // render() centers all geometry on the bbox midpoint and returns one group
-  // per layer.
+  // render() centers all geometry on the bbox midpoint and returns one
+  // group per layer.
   const renderedLayers = renderer3d.render(layers, bbox);
   const model = new THREE.Group();
   for (const rl of renderedLayers) model.add(rl.object);
@@ -80,22 +107,20 @@ export async function renderComposite(gcodeText, opts) {
   scene.background = new THREE.Color("#ffffff");
   scene.add(model);
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.75));
-  const sun = new THREE.DirectionalLight(0xffffff, 1.1);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.0);
   sun.position.set(1, -1, 2);
   scene.add(sun);
-  const fill = new THREE.DirectionalLight(0xffffff, 0.4);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.45);
   fill.position.set(-1, 1, 1);
   scene.add(fill);
 
-  // Scene space = G-code space minus `center` (Z-up). Draw the bed where it
-  // really is so placement on the plate stays visible.
-  const grid = new THREE.GridHelper(Math.max(bedX, bedY), 22, 0xcccccc, 0xe6e6e6);
+  // Scene space = G-code space minus `center` (Z-up). Draw the bed where
+  // it really is so placement on the plate stays visible.
+  const grid = new THREE.GridHelper(Math.max(bedX, bedY), 22, 0xcccccc, 0xeeeeee);
   grid.rotation.x = Math.PI / 2;
   grid.position.set(bedX / 2 - center.x, bedY / 2 - center.y, -center.z);
   scene.add(grid);
-
-  const radius = Math.max(size.x, size.y, size.z) * 0.9 + 8;
 
   const canvas = document.createElement("canvas");
   canvas.width = panel;
@@ -103,18 +128,29 @@ export async function renderComposite(gcodeText, opts) {
   const gl = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
   gl.setSize(panel, panel, false);
 
-  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 5000);
+  const FOV = 35;
+  const camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 5000);
   camera.up.set(0, 0, 1);
 
-  const angles = [
-    ["isometric", [radius, -radius, radius * 0.85]],
-    ["isometric, rotated", [-radius, -radius, radius * 0.85]],
-    ["front", [0, -radius * 1.5, size.z * 0.25]],
+  // Fit the bbox's bounding sphere in view with a margin, so the whole
+  // part is framed identically regardless of size.
+  const sphereR = size.length() / 2;
+  const dist = (sphereR / Math.sin((FOV / 2) * (Math.PI / 180))) * 1.12;
+
+  // Unit directions the camera sits along, per view (Z-up).
+  const views = [
+    ["isometric front-left", [-1, -1, 0.8]],
+    ["isometric front-right", [1, -1, 0.8]],
+    ["isometric back-right", [1, 1, 0.8]],
+    ["front", [0, -1, 0.15]],
+    ["right side", [1, 0, 0.15]],
+    ["top", [0, -0.35, 1]],
   ];
 
   const shots = [];
-  for (const [label, pos] of angles) {
-    camera.position.set(pos[0], pos[1], pos[2]);
+  for (const [label, dir] of views) {
+    const d = new THREE.Vector3(...dir).normalize().multiplyScalar(dist);
+    camera.position.copy(d);
     camera.lookAt(0, 0, 0);
     camera.updateProjectionMatrix();
     gl.render(scene, camera);
@@ -122,42 +158,50 @@ export async function renderComposite(gcodeText, opts) {
   }
   gl.dispose();
 
+  const cols = 3;
+  const rows = Math.ceil(shots.length / cols);
   const pad = 10;
+  const labelH = 26;
+  const headerH = 44;
   const legendH = 46;
   const out = document.createElement("canvas");
-  out.width = panel * shots.length + pad * (shots.length + 1);
-  out.height = panel + legendH + 56;
+  out.width = panel * cols + pad * (cols + 1);
+  out.height = headerH + rows * (panel + labelH + pad) + legendH;
   const ctx = out.getContext("2d");
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, out.width, out.height);
 
   ctx.fillStyle = "#222222";
-  ctx.font = "bold 22px sans-serif";
-  ctx.fillText(`${opts.title || "sliced G-code"}   |   height ${size.z.toFixed(1)} mm`, pad, 30);
+  ctx.font = "bold 24px sans-serif";
+  ctx.fillText(
+    `${opts.title || "sliced G-code"}   |   ${size.x.toFixed(0)} x ${size.y.toFixed(0)} x ${size.z.toFixed(1)} mm`,
+    pad, 30,
+  );
 
   for (let i = 0; i < shots.length; i++) {
     const [label, url] = shots[i];
     const img = new Image();
     await new Promise((res) => { img.onload = res; img.src = url; });
-    const x = pad + i * (panel + pad);
-    ctx.drawImage(img, x, 44, panel, panel);
+    const x = pad + (i % cols) * (panel + pad);
+    const y = headerH + Math.floor(i / cols) * (panel + labelH + pad);
+    ctx.drawImage(img, x, y, panel, panel);
     ctx.fillStyle = "#555555";
-    ctx.font = "16px sans-serif";
-    ctx.fillText(label, x + 4, 44 + panel + 18);
+    ctx.font = "17px sans-serif";
+    ctx.fillText(label, x + 4, y + panel + 19);
   }
 
   let lx = pad;
   const ly = out.height - 14;
-  ctx.font = "15px sans-serif";
+  ctx.font = "16px sans-serif";
   for (const [name, color] of LEGEND) {
     ctx.fillStyle = color;
-    ctx.fillRect(lx, ly - 13, 14, 14);
+    ctx.fillRect(lx, ly - 14, 15, 15);
     ctx.fillStyle = "#333333";
-    ctx.fillText(name, lx + 19, ly);
-    lx += 19 + ctx.measureText(name).width + 22;
+    ctx.fillText(name, lx + 20, ly);
+    lx += 20 + ctx.measureText(name).width + 24;
   }
   ctx.fillStyle = "#999999";
-  ctx.fillText("rendered with @polar3d/gcode-viewer", out.width - 300, ly);
+  ctx.fillText("rendered with @polar3d/gcode-viewer", out.width - 310, ly);
 
   return out.toDataURL("image/png");
 }
