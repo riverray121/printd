@@ -127,14 +127,18 @@ class Watcher:
                 self.last_progress = completion
         else:
             if self.active_file:
-                finished = self.last_progress >= 99.0
+                # last_progress is stale by up to one poll interval; OctoPrint
+                # still reports the job's final completion after it ends, so
+                # prefer that (100.0 for a natural finish).
+                final = st.completion if st.completion is not None else self.last_progress
+                finished = final >= 99.0
                 title = "Print finished" if finished else f"Print ended: {state}"
-                self._notify(title, f"{self.active_file} ({self.last_progress:.1f}%)")
+                self._notify(title, f"{self.active_file} ({final:.1f}%)")
                 self.p.storage.log_job(
                     event="finished" if finished else "ended",
                     file=self.active_file,
                     state=state,
-                    completion=round(self.last_progress, 1),
+                    completion=round(final, 1),
                 )
                 self._reset()
 
