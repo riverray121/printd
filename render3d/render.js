@@ -42,11 +42,15 @@ async function main() {
     const page = await browser.newPage();
     await page.setContent("<!doctype html><html><body></body></html>");
     await page.addScriptTag({ path: path.join(__dirname, "dist", "bundle.js") });
-    const dataUrl = await page.evaluate(
+    const result = await page.evaluate(
       ([text, opts]) => window.PrintdRender.renderComposite(text, opts),
       [gcode, { bedX, bedY, title: titleArg || path.basename(gcodePath, ".gcode") }]
     );
-    fs.writeFileSync(outPng, Buffer.from(dataUrl.split(",")[1], "base64"));
+    const write = (p, dataUrl) => fs.writeFileSync(p, Buffer.from(dataUrl.split(",")[1], "base64"));
+    write(outPng, result.full);
+    const stem = outPng.replace(/\.png$/, "");
+    write(`${stem}.1.png`, result.top);
+    write(`${stem}.2.png`, result.bottom);
     console.log(outPng);
   } finally {
     await browser.close();

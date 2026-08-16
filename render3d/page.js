@@ -194,7 +194,23 @@ export async function renderComposite(gcodeText, opts) {
   ctx.fillStyle = "#999999";
   ctx.fillText("rendered with @polar3d/gcode-viewer", out.width - 310, ly);
 
-  return out.toDataURL("image/png");
+  // Chat clients compress a single tall composite until it is unreadable;
+  // the two halves (tube views / line views + bed map) survive at usable
+  // resolution when sent as separate images.
+  const splitY = headerH + 2 * (panel + labelH + pad);
+  const crop = (y0, h) => {
+    const c = document.createElement("canvas");
+    c.width = out.width;
+    c.height = h;
+    c.getContext("2d").drawImage(out, 0, -y0);
+    return c.toDataURL("image/png");
+  };
+
+  return {
+    full: out.toDataURL("image/png"),
+    top: crop(0, splitY),
+    bottom: crop(splitY, out.height - splitY),
+  };
 }
 
 function renderTubeViews(layers, bbox, center, { bedX, bedY, panel }) {

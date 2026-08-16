@@ -42,13 +42,19 @@ def slice_model(model: str, process: str = "plain", filament: str = "default",
 
 @mcp.tool
 def preview_image(gcode: str) -> dict:
-    """Return the preview PNG for a sliced file, base64-encoded, so the client
-    can show it to the human for approval."""
+    """Paths to the preview images for a sliced file, for showing to the human
+    before approval. `path` is the full composite; `part_paths` are the same
+    content split into two images that stay readable in chat clients which
+    compress large photos — when sending to a chat, send the parts."""
     p = pipeline()
     png = p.storage.previews / f"{Path(gcode).stem}.png"
     if not png.exists():
         raise FileNotFoundError("no preview rendered for that file; run slice first")
-    return {"png_base64": base64.b64encode(png.read_bytes()).decode(), "path": str(png)}
+    parts = [png.with_name(f"{png.stem}.{i}.png") for i in (1, 2)]
+    return {
+        "path": str(png),
+        "part_paths": [str(q) for q in parts if q.exists()],
+    }
 
 
 @mcp.tool
