@@ -66,11 +66,15 @@ def status() -> dict:
 
 @mcp.tool
 def snapshot() -> dict:
-    """Camera snapshot, base64 JPEG."""
+    """Camera snapshot. Saves the JPEG to the returned path (for clients that
+    attach files) and includes it base64-encoded (for clients that render
+    inline)."""
     image = pipeline().snapshot()
     if image is None:
         return {"error": "no camera configured or camera unreachable"}
-    return {"jpeg_base64": base64.b64encode(image).decode()}
+    path = Path("/tmp/printd_snapshot.jpg")
+    path.write_bytes(image)
+    return {"path": str(path), "jpeg_base64": base64.b64encode(image).decode()}
 
 
 @mcp.tool
