@@ -11,9 +11,18 @@ import yaml
 _ENV_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
+def _resolve_env(m: re.Match) -> str:
+    name = m.group(1)
+    if name not in os.environ:
+        # An unset variable would otherwise become empty text and surface
+        # later as confusing auth or connection failures far from the cause.
+        raise KeyError(f"config references ${{{name}}} but {name} is not set in the environment")
+    return os.environ[name]
+
+
 def _interpolate(value: Any) -> Any:
     if isinstance(value, str):
-        return _ENV_RE.sub(lambda m: os.environ.get(m.group(1), ""), value)
+        return _ENV_RE.sub(_resolve_env, value)
     if isinstance(value, dict):
         return {k: _interpolate(v) for k, v in value.items()}
     if isinstance(value, list):

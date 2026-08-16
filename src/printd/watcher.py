@@ -77,11 +77,21 @@ class Watcher:
 
         state = st.state
         if state in ACTIVE_STATES:
-            if st.file != self.active_file:
+            # OctoPrint can transiently report no filename during an active
+            # state; treating that as a new print would wipe the gallery and
+            # notify "Print started: None".
+            if st.file and st.file != self.active_file:
                 self._reset()
                 self.active_file = st.file
+                completion_now = st.completion or 0.0
                 if first_poll:
-                    print(f"adopted running print: {st.file}", flush=True)
+                    # Adopting a print already in progress (watcher restart):
+                    # mark everything at or below current progress as already
+                    # sent so nothing gets re-notified.
+                    self.sent_milestones = {m for m in self.milestones if completion_now >= m}
+                    self.sent_first_layer = True
+                    self.last_progress = completion_now
+                    print(f"adopted running print: {st.file} at {completion_now:.1f}%", flush=True)
                 else:
                     try:
                         self.notifier.new_session()

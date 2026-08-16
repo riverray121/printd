@@ -122,8 +122,14 @@ def main():
             from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
 
             mcp.auth = StaticTokenVerifier(tokens={token: {"client_id": "printd"}})
-        except ImportError:
-            print("warning: fastmcp auth provider unavailable; serving without bearer auth")
+        except ImportError as e:
+            # A token was configured, so serving without the check would
+            # expose start/cancel/send_gcode to the whole network. Refuse
+            # to start instead.
+            raise SystemExit(
+                f"PRINTD_BEARER_TOKEN is set but the fastmcp auth provider "
+                f"failed to load ({e}); refusing to serve unauthenticated"
+            )
     mcp.run(transport="http", host=args.host, port=args.port)
 
 

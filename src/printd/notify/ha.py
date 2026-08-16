@@ -94,7 +94,7 @@ class HomeAssistantNotifier(Notifier):
         if image is not None:
             try:
                 self.session_dir.mkdir(parents=True, exist_ok=True)
-                name = f"snap_{int(time.time())}.jpg"
+                name = f"snap_{time.time_ns()}.jpg"
                 (self.session_dir / name).write_bytes(image)
                 self._record_snapshot(name, title, message)
                 data["image"] = f"/local/printd/session/{name}"
