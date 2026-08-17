@@ -7,6 +7,8 @@ below ``cooldown_nozzle_c`` (cutting power hot stops the hotend fan while
 heat is still draining out of the hotend).
 """
 
+import time
+
 import requests
 
 
@@ -17,19 +19,41 @@ class HAPower:
         self.token = cfg["ha_token"]
         self.entity = cfg["entity"]
 
-    def _call(self, service: str) -> None:
-        requests.post(
-            f"{self.url}/api/services/switch/{service}",
-            json={"entity_id": self.entity},
-            headers={"Authorization": f"Bearer {self.token}"},
-            timeout=15,
-        ).raise_for_status()
+    def _headers(self) -> dict:
+        return {"Authorization": f"Bearer {self.token}"}
+
+    def _state(self) -> str:
+        r = requests.get(
+            f"{self.url}/api/states/{self.entity}", headers=self._headers(), timeout=15,
+        )
+        r.raise_for_status()
+        return r.json()["state"]
+
+    def _switch(self, service: str, want: str) -> None:
+        """Command the switch and verify it actually changed.
+
+        HA reports success even when the Matter command to the device times
+        out, so the only trustworthy signal is the entity's state. Matter
+        plugs drop occasional commands; retrying until the state matches
+        makes the operation reliable.
+        """
+        for _ in range(6):
+            requests.post(
+                f"{self.url}/api/services/switch/{service}",
+                json={"entity_id": self.entity},
+                headers=self._headers(),
+                timeout=15,
+            ).raise_for_status()
+            time.sleep(5)
+            if self._state() == want:
+                return
+        raise TimeoutError(f"{self.entity} did not reach state {want!r} after retries")
 
     def on(self) -> None:
-        self._call("turn_on")
+        self._switch("turn_on", "on")
 
     def off(self) -> None:
-        self._call("turn_off")
+        self._switch("turn_off", "off")
 
     @property
     def on_before_start(self) -> bool:
