@@ -10,6 +10,7 @@ from .drivers import make_driver
 from .gates import enabled_gates, placement
 from .gates.approval import ApprovalGate
 from .models import GateFailure, SliceResult
+from .power import make_power
 from .slicers import make_slicer
 from .storage import Storage
 from .submit import submit as submit_model
@@ -29,6 +30,7 @@ class Pipeline:
         self.gates = enabled_gates(config.section("gates"))
         self.storage = Storage(config.storage_root)
         self.approval = next((g for g in self.gates if isinstance(g, ApprovalGate)), None)
+        self.power = make_power(config.section("power"))
 
     # -- steps -------------------------------------------------------------
 
@@ -87,6 +89,12 @@ class Pipeline:
             raise FileNotFoundError(f"{gcode_path} not found")
         if self.approval:
             self.approval.verify_start(self.storage.file_hash(path), approval_token, skip_approval)
+
+        if self.power and self.power.on_before_start:
+            self.power.on()
+            # The printer needs a moment on mains before its USB serial
+            # device exists; connect() below retries over ~60 s.
+            time.sleep(5)
 
         self.driver.connect()
         remote = f"printd_{path.stem}.gcode"

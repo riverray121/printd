@@ -31,6 +31,10 @@ class Watcher:
         # is adopted, not treated as newly started (no gallery reset, no
         # duplicate "Print started" notification after a watcher restart).
         self.first_poll = True
+        # Set when a print finishes cleanly and power-off is configured;
+        # cleared once the nozzle has cooled and the switch is turned off,
+        # or when a new print starts in the meantime.
+        self.power_off_pending = False
 
     def _reset(self):
         self.active_file = None
@@ -77,6 +81,7 @@ class Watcher:
 
         state = st.state
         if state in ACTIVE_STATES:
+            self.power_off_pending = False
             # OctoPrint can transiently report no filename during an active
             # state; treating that as a new print would wipe the gallery and
             # notify "Print started: None".
@@ -140,7 +145,25 @@ class Watcher:
                     state=state,
                     completion=round(final, 1),
                 )
+                # Only a clean finish powers the printer down; after a cancel
+                # or failure the user is likely inspecting or retrying.
+                if finished and self.p.power and self.p.power.off_after_finish:
+                    self.power_off_pending = True
                 self._reset()
+            elif self.power_off_pending:
+                nozzle = st.nozzle_actual
+                if nozzle is not None and nozzle < self.p.power.cooldown_nozzle_c:
+                    self.power_off_pending = False
+                    try:
+                        self.p.power.off()
+                        self._notify(
+                            "Printer powered off",
+                            f"nozzle cooled to {nozzle:.0f}\N{DEGREE SIGN}C",
+                            with_snapshot=False,
+                        )
+                    except Exception as e:
+                        print(f"power off failed: {e}", file=sys.stderr, flush=True)
+                        self._notify("Power off failed", str(e), with_snapshot=False)
 
     def run_forever(self):
         print(f"printd watcher up: polling every {self.poll_s}s", flush=True)

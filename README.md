@@ -51,6 +51,7 @@ Everything opinionated is configured, not hardcoded, in one YAML file:
 | Checks | brim/skirt policy, bed placement zone, motion bounds, preview approval |
 | G-code transforms | fresh-bed-probe preamble, Marlin start-gcode patches |
 | Notifiers | Home Assistant companion app |
+| Power control | Home Assistant switch (on before start, off after finish + cooldown) |
 
 ## License
 

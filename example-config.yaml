@@ -46,5 +46,18 @@ watcher:
 notifier:
   backend: log                         # log | ha
 
+# Optional printer mains power via a Home Assistant switch (smart plug).
+# start turns the printer on before connecting; the watcher turns it off
+# after a clean finish once the nozzle has cooled. Cancels and failures
+# leave power on.
+# power:
+#   backend: ha
+#   ha_url: ${HA_URL}
+#   ha_token: ${HA_TOKEN}
+#   entity: switch.printer_power
+#   on_before_start: true
+#   off_after_finish: true
+#   cooldown_nozzle_c: 50
+
 storage:
   root: ~/print
