@@ -9,6 +9,7 @@ from .config import Config
 from .drivers import make_driver
 from .gates import enabled_gates, placement
 from .gates.approval import ApprovalGate
+from .light import make_light
 from .models import GateFailure, SliceResult
 from .power import make_power
 from .slicers import make_slicer
@@ -31,6 +32,7 @@ class Pipeline:
         self.storage = Storage(config.storage_root)
         self.approval = next((g for g in self.gates if isinstance(g, ApprovalGate)), None)
         self.power = make_power(config.section("power"))
+        self.light = make_light(config.section("light"))
 
     # -- steps -------------------------------------------------------------
 

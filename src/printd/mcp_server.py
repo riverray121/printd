@@ -105,6 +105,24 @@ def cancel() -> str:
 
 
 @mcp.tool
+def light(action: str) -> dict:
+    """Printer work light: action is "on", "off", or "status". Available only
+    when the deployment configures a light."""
+    lt = pipeline().light
+    if lt is None:
+        return {"error": "no light configured"}
+    if action == "on":
+        lt.on()
+        return {"on": True}
+    if action == "off":
+        lt.off()
+        return {"on": False}
+    if action == "status":
+        return {"on": lt.is_on()}
+    raise ValueError(f"unknown action {action!r}; use on, off, or status")
+
+
+@mcp.tool
 def send_gcode(commands: list[str]) -> str:
     """Escape hatch: send raw G-code commands. Use only when the human has
     asked for something the other tools cannot do."""

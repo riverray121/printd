@@ -59,5 +59,16 @@ notifier:
 #   off_after_finish: true
 #   cooldown_nozzle_c: 50
 
+# Optional printer work light behind an HTTP relay (GPIO proxy, smart plug
+# firmware, ...). status_url/status_key are optional; without them status
+# reports unknown.
+# light:
+#   backend: http
+#   on_url: http://octopi.local:8089/on
+#   off_url: http://octopi.local:8089/off
+#   status_url: http://octopi.local:8089/status
+#   status_key: manual_on
+#   method: get                        # get | post | put
+
 storage:
   root: ~/print

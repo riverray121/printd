@@ -35,6 +35,9 @@ def main():
     s = sub.add_parser("snapshot", help="save a camera snapshot")
     s.add_argument("out", nargs="?", default="snapshot.jpg")
 
+    s = sub.add_parser("light", help="printer work light")
+    s.add_argument("state", choices=["on", "off", "status"])
+
     s = sub.add_parser("gcode", help="escape hatch: raw G-code")
     s.add_argument("commands", nargs="+")
 
@@ -65,6 +68,17 @@ def main():
             sys.exit("no camera available")
         Path(args.out).write_bytes(image)
         print(args.out)
+    elif args.cmd == "light":
+        if p.light is None:
+            sys.exit("no light configured")
+        if args.state == "on":
+            p.light.on()
+            print("on")
+        elif args.state == "off":
+            p.light.off()
+            print("off")
+        else:
+            print(json.dumps({"on": p.light.is_on()}))
     elif args.cmd == "gcode":
         p.driver.gcode(args.commands)
         print("sent")
