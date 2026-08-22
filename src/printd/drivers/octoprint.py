@@ -76,12 +76,10 @@ class OctoPrintDriver(Driver):
         if not self.camera_url:
             return None
         try:
-            # The camera idles when nothing is streaming; a frame grabbed
-            # from idle is captured before auto-exposure has adjusted and
-            # comes out dark. The first request wakes the camera, the wait
-            # lets exposure settle, the second request is the real shot.
-            requests.get(self.camera_url, timeout=self.timeout)
-            time.sleep(5)
+            # camera_url points at a snapshot endpoint that owns camera
+            # wake-up, exposure settle, and night lighting (snaplight on
+            # octopi); one request returns a ready frame, and a second
+            # would fire the work light twice per photo.
             r = requests.get(self.camera_url, timeout=self.timeout)
             r.raise_for_status()
             return r.content
