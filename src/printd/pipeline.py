@@ -65,6 +65,10 @@ class Pipeline:
             None,
         )
         report = gcode_mod.analyze(out, skip_leading_lines_of=preamble)
+        if "supports" not in process:
+            advisory = gcode_mod.support_advisory(report)
+            if advisory:
+                notes.append(advisory)
         gate_reports = {}
         for gate in self.gates:
             result = gate.check(out, report, {"bed_mm": self.bed_mm, "height_mm": self.height_mm})
